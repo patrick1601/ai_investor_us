@@ -54,13 +54,16 @@ def getXDataMerged():
     print('Cash Flow Statement DF is: ', c.shape)
     print('Derived Figures DF is: ', d.shape)
 
-    # merge the pulled dataframes into one dataframe
-    result = pd.merge(a, b, on=['Ticker','SimFinId','Currency','Fiscal Year','Report Date','Publish Date','Restated Date', 'Fiscal Period'])
-    result = pd.merge(result, c, on=['Ticker','SimFinId','Currency','Fiscal Year','Report Date','Publish Date','Restated Date', 'Fiscal Period'])
-    result = pd.merge(result, d, on=['Ticker','SimFinId','Currency','Fiscal Year','Report Date','Publish Date','Restated Date', 'Fiscal Period'])
+    # merge the pulled dataframes into one dataframe (removing duplicated columns before merging)
+    diff_cols = b.columns.difference(a.columns)
+    result = pd.merge(a, b[diff_cols], left_index=True, right_index=True)
 
-    result['Report Date'] = pd.to_datetime(result['Report Date'])
-    result['Publish Date'] = pd.to_datetime(result['Publish Date'])
+    diff_cols = c.columns.difference(result.columns)
+    result = pd.merge(result, c[diff_cols], left_index=True, right_index=True)
+
+    diff_cols = d.columns.difference(result.columns)
+    result = pd.merge(result, d[diff_cols], left_index=True, right_index=True)
+
     print('merged X data matrix shape is: ', result.shape)
 
     return result
