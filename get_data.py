@@ -1,6 +1,7 @@
 import datetime as dt
 import numpy as np
 import pandas as pd
+from pandas.plotting import scatter_matrix
 import simfin as sf
 import sys
 #%%
@@ -142,6 +143,6 @@ x.to_csv("Annual_Stock_Price_Fundamentals.csv")
 #%% takes several hours
 e = getYRawData()
 y = getYPricesReportDateAndTargetDate(x, e, 365)
-#%%
+#%% save y to csv file
 y=pd.DataFrame(y, columns=['Ticker', 'Open Price', 'Date', 'Volume', 'Ticker2', 'Open Price2', 'Date2', 'Volume2'])
 y.to_csv('Annual_Stock_Price_Performance.csv')
