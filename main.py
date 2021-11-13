@@ -73,6 +73,8 @@ def getXDataMerged():
     diff_cols = d.columns.difference(result.columns)
     result = pd.merge(result, d[diff_cols], left_index=True, right_index=True)
 
+    result.reset_index(inplace=True, drop=False)
+
     print('merged X data matrix shape is: ', result.shape)
 
     return result
@@ -88,6 +90,7 @@ def getYRawData():
 
     # Download the data from the SimFin server and load into a Pandas DataFrame.
     e = sf.load_shareprices(variant='daily', market='us')
+    e.reset_index(inplace=True, drop=False)
     print('Stock Price data matrix is: ', e.shape)
     return e
 #%% function to return just the y price and volume near date (as we have imperfect data)
@@ -102,18 +105,43 @@ def getYPriceDataNearDate(ticker, date, modifier, e):
             pd.to_datetime(date) + pd.Timedelta(days=windowDays+modifier)))\
             & (e['Ticker']==ticker)]
     if rows.empty:
-        return [ticker, np.float('NaN'),\
+        return [ticker, np.float64('NaN'),\
                 np.datetime64('NaT'),\
-                np.float('NaN')]
+                np.float64('NaN')]
     else: #take the first item of the list of days that fall in the window of accepted days
         return [ticker, rows.iloc[0]['Open'],\
                 rows.iloc[0]['Date'],\
                 rows.iloc[0]['Volume']*rows.iloc[0]['Open']]
-#%%
-x = getXDataMerged()
-x.reset_index(inplace=True, drop=False)
-e = getYRawData()
-e.reset_index(inplace=True, drop=False)
+#%% function that shows the close prices for the report dates in the x dataframe
+# modifier is the hold period for a stock
+# x is the vector of company data
+# e is the Y raw data (stock prices and date for all days)
+def getYPricesReportDateAndTargetDate(x, e, modifier=365):
+    i = 0
+
+    # Preallocation list of list of 2
+    # [(price at date) (price at date + modifier)]
+    y = [[None]*8 for i in range (len(x))]
+
+    # the performance date from->to.
+    # Want this to be publish date because of the time lag between report date (which can't be actioned on)
+    # and publish date (public)
+    whichDateCol = 'Publish Date'
+
+    for index in range(len(x)):
+        y[i] = (getYPriceDataNearDate(\
+            x['Ticker'].iloc[index], x[whichDateCol].iloc[index], 0, e) + \
+                getYPriceDataNearDate(\
+                    x['Ticker'].iloc[index], x[whichDateCol].iloc[index], modifier, e))
+        i=i+1
+    return y
 
 #%%
-print(getYPriceDataNearDate('AAPL','2012-05-12',30,e))
+x = getXDataMerged()
+x.to_csv("Annual_Stock_Price_Fundamentals.csv")
+#%% takes several hours
+e = getYRawData()
+y = getYPricesReportDateAndTargetDate(x, e, 365)
+#%%
+y=pd.DataFrame(y, columns=['Ticker', 'Open Price', 'Date', 'Volume', 'Ticker2', 'Open Price2', 'Date2', 'Volume2'])
+y.to_csv('Annual_Stock_Price_Performance.csv')
