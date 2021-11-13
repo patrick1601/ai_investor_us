@@ -1,5 +1,6 @@
-from matplotlib import pyplot as plt
 import pandas as pd
+from matplotlib import pyplot as plt
+from sklearn.preprocessing import PowerTransformer
 #%%
 x_ = pd.read_csv('Annual_Stock_Price_Fundamentals_Filtered.csv', index_col=0)
 y_ = pd.read_csv('Annual_Stock_Price_Performance_Filtered.csv', index_col=0)
@@ -147,10 +148,47 @@ def fixXRatios():
         else:
             maxMinRatio(x, key, 2000, -2000)
     return x
-#%% run main program
+#%% run main program to create training dataset
 fixNansInX()
 addColsToX()
 x = getXRatios()
 x = fixXRatios()
 #%% save to csv
 x.to_csv('Annual_Stock_Price_Fundamentals_Ratios.csv')
+#%% function to create final y vector by finding percent change between the start and end prices for each period
+def getYPerf(y_):
+    y = pd.DataFrame()
+    y['Ticker'] = y_['Ticker']
+    y['Perf'] = (y_['Open Price2'] - y_['Open Price'])/y_['Open Price']
+    y[y['Perf'].isnull()] = 0
+    return y
+#%% run main program to create y vector
+y = getYPerf(y_)
+#%% save to csv
+y.to_csv('Annual_Stock_Price_Performance_Percentage.csv')
+#%% code to plot out all distributions of X
+transformer = PowerTransformer()
+x_t = pd.DataFrame(transformer.fit_transform(x), columns=x.keys())
+
+def plotFunc(n, myDatFrame):
+    myKey = myDatFrame.keys()[n]
+    plt.hist(myDatFrame[myKey], density=True, bins=30)
+    plt.grid()
+    plt.xlabel(myKey)
+    plt.ylabel('Probability')
+
+plt.figure(figsize=(13,20))
+
+plotsIwant=[4, 6, 9, 10, 11]
+j = 1
+for i in plotsIwant:
+    plt.subplot(len(plotsIwant), 2, 2*j-1)
+    plotFunc(i, x)
+    if j == 1:
+        plt.title('Before Transformation', fontsize=17)
+    plt.subplot(len(plotsIwant), 2, 2*j)
+    plotFunc(i,x_t)
+    if j == 1:
+        plt.title('After Transformation', fontsize=17)
+    j += 1
+plt.savefig('Transformat_Dists.png', dpi=300)
