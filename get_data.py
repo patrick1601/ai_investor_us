@@ -1,9 +1,7 @@
 import datetime as dt
 import numpy as np
 import pandas as pd
-from pandas.plotting import scatter_matrix
 import simfin as sf
-import sys
 #%%
 def getXDataMerged():
     # this function will download required data and merge into one dataframe
