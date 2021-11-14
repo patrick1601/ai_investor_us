@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import pickle
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import ElasticNet
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
@@ -93,3 +96,96 @@ y_predtest = pd.DataFrame(y_pred)
 bl_bottom10 = (y_predtest[0] < y_predtest.nsmallest(8,0).tail(1)[0].values[0]) # bottom 10 predicted returns
 print('Bottom 10 Predicted Returns:', round(np.mean(y_predtest[bl_bottom10][0])*100,2), '%')
 print('Actual Bottom 10 Returns:', round(np.mean(y_test_reindexed[bl_bottom10])*100,2), '%')
+#%% function for creating table of top 10/bottom 10 averaged, 10 rows of 10 random states
+def observePredictionAbility(my_pipeline):
+    Top10PredRtrns=np.array([])
+    Top10ActRtrns=np.array([])
+    Bottom10PredRtrns=np.array([])
+    Bottom10ActRtrns=np.array([])
+
+    for i in range (0,10):
+
+        X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=i)
+
+        my_pipeline.fit(X_train, y_train)
+        y_pred = my_pipeline.predict(X_test)
+
+        # See top 10 stocks and see how the values differ
+        y_predtest = pd.DataFrame(y_pred)
+        bl_top10 = (y_predtest[0] > y_predtest.nlargest(10,0).tail(1)[0].values[0])
+
+        y_test_reindexed = y_test.reset_index(drop=True)
+
+        Top10PredRtrns = np.append(Top10PredRtrns, round(np.mean(y_predtest[bl_top10][0])*100, 2))
+        Top10ActRtrns = np.append(Top10ActRtrns, round(np.mean(y_test_reindexed[bl_top10])*100, 2))
+
+        # See bottom 10 stocks and how the values differ
+        y_predtest=pd.DataFrame(y_pred)
+        bl_bottom10 = (y_predtest[0] < y_predtest.nsmallest(10,0).tail(1)[0].values[0])
+
+        # print('Returns:', y_predtest[bl_bottom10][0].values)
+        Bottom10PredRtrns = np.append(Bottom10PredRtrns, round(np.mean(y_predtest[bl_bottom10][0])*100,2))
+        # print('Returns:', y_test_reindexed[bl_bottom10].values)
+        Bottom10ActRtrns = np.append(Bottom10ActRtrns, round(np.mean(y_test_reindexed[bl_bottom10])*100,2))
+
+        print('------------------------\n')
+        # IMPORT PERFORMANCE MEASURES HERE
+        print('\033[4mMean Predicted Performance of Top 10 Return Portfolios:\033[0m',
+              round(Top10PredRtrns.mean(),2))
+        
+        print('\033[4mMean Actual Performance of Top 10 Return Portfolios:\033[0m',
+              round(Top10ActRtrns.mean(),2))
+        
+        print('Mean Predicted Performance of Bottom 10 Return Portfolios:', round(Bottom10PredRtrns.mean(),2))
+        print('Mean Actual Performance of Bottom 10 Return Portfolios:', round(Bottom10ActRtrns.mean(),2))
+        print('------------------------\n')
+
+observePredictionAbility(pl_linear)
+#%% Elastic-Net Regression Model
+pl_ElasticNet = Pipeline([('Power Transformer', PowerTransformer()),
+                          ('ElasticNet', ElasticNet(l1_ratio=0.00001))])
+
+pl_ElasticNet.fit(X_train, y_train)
+y_pred_lowL1 = pl_ElasticNet.predict(X_test)
+print('train mse: ', mean_squared_error(y_train, pl_ElasticNet.predict(X_train)))
+print('test mse: ', mean_squared_error(y_test, pl_ElasticNet.predict(X_test)))
+
+pickle.dump(pl_ElasticNet, open("pl_ElasticNet.p", "wb"))
+
+observePredictionAbility(pl_ElasticNet)
+#%% K-Nearest Neighbours train model
+x = pd.read_csv('Annual_Stock_Price_Fundamentals_Ratios.csv', index_col=0)
+y = pd.read_csv('Annual_Stock_Price_Performance_Percentage.csv', index_col=0)
+y = y['Perf']
+
+X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
+
+pl_KNeighbors = Pipeline([
+    ('Power Transformer', PowerTransformer()),
+    ('KNeighborsRegressor', KNeighborsRegressor(n_neighbors=40))
+])
+
+pl_KNeighbors.fit(X_train, y_train)
+y_pred = pl_KNeighbors.predict(X_test)
+
+print('train mse: ', mean_squared_error(y_train, pl_KNeighbors.predict(X_train)))
+print('test mse: ', mean_squared_error(y_test, y_pred))
+#%% K-Nearest Neighbours RMSE to determine K value
+train_errors, test_errors, test_sizes = [], [], []
+
+for i in range (4, 100):
+    pl_KNeighbors = Pipeline([
+        ('Power Transformer', PowerTransformer()),
+         ('KNeighborsRegressor', KNeighborsRegressor(n_neighbors=i))])
+    pl_KNeighbors.fit(X_train, y_train)
+    y_pred = pl_KNeighbors.predict(X_test)
+    train_errors.append(mean_squared_error(y_train, pl_KNeighbors.predict(X_train)))
+    test_errors.append(mean_squared_error(y_test, y_pred))
+    test_sizes.append(i)
+
+    plt.plot(test_sizes, np.sqrt(train_errors), 'r', test_sizes, np.sqrt(test_errors), 'b')
+    plt.legend(['RMSE vs. training data', 'RMSE vs. testing data'])
+    plt.grid() # plt.ylim([0,0.6])
+    plt.ylabel('RMSE');
+plt.show()
+
