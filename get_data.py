@@ -2,6 +2,7 @@ import datetime as dt
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
+from pandas.plotting import scatter_matrix
 import simfin as sf
 #%%
 # Set the plotting DPI settings to be higher.
@@ -148,3 +149,39 @@ y = pd.DataFrame(y, columns=['Ticker', 'Open Price', 'Date', 'Volume',
                              'Ticker2', 'Open Price2', 'Date2', 'Volume2'
                             ])
 y.to_csv("Annual_Stock_Price_Performance.csv")
+#%% remove rows with issues
+X=pd.read_csv("Annual_Stock_Price_Fundamentals.csv", index_col=0)
+y=pd.read_csv("Annual_Stock_Price_Performance.csv", index_col=0)
+#%%
+attributes=["Revenue","Net Income"]
+scatter_matrix(X[attributes]);
+plt.show()
+#%%
+# Find out shape about Y data (should be same number of rows)
+print("y Shape:", y.shape)
+print("X Shape:", X.shape)
+#%% find rows with low or no volume
+y[(y['Volume']<1e4) | (y['Volume2']<1e4)]# rows with volume issues
+#%%
+# Now need to filter out rows because not all of the rows have stock performance.
+## PROBLEMS
+# no accounting for mergers or bankruptcies (use adjusted share closing price)
+
+# Issue where no share price
+bool_list1 = ~y["Open Price"].isnull()
+# Issue where there is low/no volume
+bool_list2 = ~((y['Volume'] < 1e4) | (y['Volume2'] < 1e4))
+# Issue where dates missing (Removes latest data too, which we can't use)
+bool_list3 = ~y["Date2"].isnull()
+
+y = y[bool_list1 & bool_list2 & bool_list3]
+X = X[bool_list1 & bool_list2 & bool_list3]
+
+# Issues where no listed number of shares
+bool_list4 = ~X["Shares (Diluted)_x"].isnull()
+y = y[bool_list4]
+X = X[bool_list4]
+
+y = y.reset_index(drop=True)
+X = X.reset_index(drop=True)
+#%%
