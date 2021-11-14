@@ -184,4 +184,12 @@ X = X[bool_list4]
 
 y = y.reset_index(drop=True)
 X = X.reset_index(drop=True)
-#%%
+#%% add market cap to X data
+X["Market Cap"] = y["Open Price"]*X["Shares (Diluted)_x"]
+#%% print X shape (15588, 75)
+print(X.shape)
+# print Y shape (15588, 8)
+print(y.shape)
+#%% save to CSV
+X.to_csv("Annual_Stock_Price_Fundamentals_Filtered.csv")
+y.to_csv("Annual_Stock_Price_Performance_Filtered.csv")
