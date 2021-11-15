@@ -1,99 +1,240 @@
 ﻿from matplotlib import pyplot as plt
-import numpy as np
 import pandas as pd
-import pickle
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import PowerTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import learning_curve
-from sklearn.model_selection import ShuffleSplit
+import numpy as np
+import math
 #%%
-# Set the plotting DPI settings to be higher.
+# Set the plotting DPI settings to be a bit higher.
 plt.rcParams['figure.figsize'] = [7.0, 4.5]
 plt.rcParams['figure.dpi'] = 150
 #%%
-def loadXandyAgain():
+# In this notebook we will use x_ for x fundamentals,
+# and X is the input matrix we want at the end.
+x_=pd.read_csv("Annual_Stock_Price_Fundamentals_Filtered.csv",
+               index_col=0)
+y_=pd.read_csv("Annual_Stock_Price_Performance_Filtered.csv",
+               index_col=0)
+#%%
+def fixNansInX(x):
     '''
-    Load X and y.
-    Randomises rows.
-    Returns X, y.
+    Takes in x DataFrame, edits it so that important keys
+    are 0 instead of NaN.
     '''
-    # Read in data
-    X = pd.read_csv("Annual_Stock_Price_Fundamentals_Ratios.csv",
-                    index_col=0)
-    y = pd.read_csv("Annual_Stock_Price_Performance_Percentage.csv",
-                    index_col=0)
-    y = y["Perf"]  # We only need the % returns as target
+    keyCheckNullList = ["Short Term Debt",
+                        "Long Term Debt",
+                        "Interest Expense, Net",
+                        "Income Tax (Expense) Benefit, Net",
+                        "Cash, Cash Equivalents & Short Term Investments",
+                        "Property, Plant & Equipment, Net",
+                        "Revenue",
+                        "Gross Profit",
+                        "Total Current Liabilities",
+                        "Property, Plant & Equipment, Net"]
+    for i in keyCheckNullList:
+        x[i] = x[i].fillna(0)
 
-    # randomize the rows
-    X['y'] = y
-    X = X.sample(frac=1.0, random_state=42)  # randomize the rows
-    y = X['y']
-    X.drop(columns=['y'], inplace=True)
 
-    return X, y
+def addColsToX(x):
+    '''
+    Takes in x DataFrame, edits it to include:
+        Enterprise Value.
+        Earnings before interest and tax.
+
+    '''
+    x["EV"] = x["Market Cap"] \
+              + x["Long Term Debt"] \
+              + x["Short Term Debt"] \
+              - x["Cash, Cash Equivalents & Short Term Investments"]
+
+    x["EBIT"] = x["Net Income"] \
+                - x["Interest Expense, Net"] \
+                - x["Income Tax (Expense) Benefit, Net"]
 #%%
-X, y = loadXandyAgain()
-y.mean() # Average stock return if we were picking at random.
-#%% LINEAR REGRESSION
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
-print('X training matrix dimensions: ', X_train.shape)
-print('X testing matrix dimensions: ', X_test.shape)
-print('y training matrix dimensions: ', y_train.shape)
-print('y testing matrix dimensions: ', y_test.shape)
+# Make new X with ratios to learn from.
+def getXRatios(x_):
+    '''
+    Takes in x_, which is the fundamental stock DataFrame raw.
+    Outputs X, which is the data encoded into stock ratios.
+    '''
+    X = pd.DataFrame()
+
+    # EV/EBIT
+    X["EV/EBIT"] = x_["EV"] / x_["EBIT"]
+
+    # Op. In./(NWC+FA)
+    X["Op. In./(NWC+FA)"] = x_["Operating Income (Loss)"] \
+                            / (x_["Total Current Assets"] - x_["Total Current Liabilities"] \
+                               + x_["Property, Plant & Equipment, Net"])
+
+    # P/E
+    X["P/E"] = x_["Market Cap"] / x_["Net Income"]
+
+    # P/B
+    X["P/B"] = x_["Market Cap"] / x_["Total Equity"]
+
+    # P/S
+    X["P/S"] = x_["Market Cap"] / x_["Revenue"]
+
+    # Op. In./Interest Expense
+    X["Op. In./Interest Expense"] = x_["Operating Income (Loss)"] \
+                                    / - x_["Interest Expense, Net"]
+
+    # Working Capital Ratio
+    X["Working Capital Ratio"] = x_["Total Current Assets"] \
+                                 / x_["Total Current Liabilities"]
+
+    # Return on Equity
+    X["RoE"] = x_["Net Income"] / x_["Total Equity"]
+
+    # Return on Capital Employed
+    X["ROCE"] = x_["EBIT"] \
+                / (x_["Total Assets"] - x_["Total Current Liabilities"])
+
+    # Debt/Equity
+    X["Debt/Equity"] = x_["Total Liabilities"] / x_["Total Equity"]
+
+    # Debt Ratio
+    X["Debt Ratio"] = x_["Total Assets"] / x_["Total Liabilities"]
+
+    # Cash Ratio
+    X["Cash Ratio"] = x_["Cash, Cash Equivalents & Short Term Investments"] \
+                      / x_["Total Current Liabilities"]
+
+    # Asset Turnover
+    X["Asset Turnover"] = x_["Revenue"] / \
+                          x_["Property, Plant & Equipment, Net"]
+
+    # Gross Profit Margin
+    X["Gross Profit Margin"] = x_["Gross Profit"] / x_["Revenue"]
+
+    ### Altman ratios ###
+    # (CA-CL)/TA
+    X["(CA-CL)/TA"] = (x_["Total Current Assets"] \
+                       - x_["Total Current Liabilities"]) \
+                      / x_["Total Assets"]
+
+    # RE/TA
+    X["RE/TA"] = x_["Retained Earnings"] / x_["Total Assets"]
+
+    # EBIT/TA
+    X["EBIT/TA"] = x_["EBIT"] / x_["Total Assets"]
+
+    # Book Equity/TL
+    X["Book Equity/TL"] = x_["Total Equity"] / x_["Total Liabilities"]
+
+    X.fillna(0, inplace=True)
+    return X
+
+
+def fixXRatios(X):
+    '''
+    Takes in X, edits it to have the distributions clipped.
+    The distribution clippings are done manually by eye,
+    with human judgement based on the information.
+    '''
+    X["RoE"].clip(-5, 5, inplace=True)
+    X["Op. In./(NWC+FA)"].clip(-5, 5, inplace=True)
+    X["EV/EBIT"].clip(-500, 500, inplace=True)
+    X["P/E"].clip(-1000, 1000, inplace=True)
+    X["P/B"].clip(-50, 100, inplace=True)
+    X["P/S"].clip(0, 500, inplace=True)
+    X["Op. In./Interest Expense"].clip(-600, 600, inplace=True)  # -600, 600
+    X["Working Capital Ratio"].clip(0, 30, inplace=True)
+    X["ROCE"].clip(-2, 2, inplace=True)
+    X["Debt/Equity"].clip(0, 100, inplace=True)
+    X["Debt Ratio"].clip(0, 50, inplace=True)
+    X["Cash Ratio"].clip(0, 30, inplace=True)
+    X["Gross Profit Margin"].clip(0, 1, inplace=True)  # how can be >100%?
+    X["(CA-CL)/TA"].clip(-1.5, 2, inplace=True)
+    X["RE/TA"].clip(-20, 2, inplace=True)
+    X["EBIT/TA"].clip(-2, 1, inplace=True)
+    X["Book Equity/TL"].clip(-2, 20, inplace=True)
+    X["Asset Turnover"].clip(-2000, 2000, inplace=True)  # 0, 500
 #%%
-# Try out linear regression
-
-pl_linear = Pipeline([
-    ('Power Transformer', PowerTransformer()),
-    ('linear', LinearRegression())
-    ])
-
-pl_linear.fit(X_train, y_train)
-y_pred = pl_linear.predict(X_test)
-
-print('Train MSE: ',
-      mean_squared_error(y_train, pl_linear.predict(X_train)))
-print('Test MSE: ',
-      mean_squared_error(y_test, y_pred))
-
-pickle.dump(pl_linear, open("pl_linear.p", "wb" ))
+def getYPerf(y_):
+    '''
+    Takes in y_, which has the stock prices and their respective
+    dates they were that price.
+    Returns a DataFrame y containing the ticker and the
+    relative change in price only.
+    '''
+    y=pd.DataFrame()
+    y["Ticker"] = y_["Ticker"]
+    y["Perf"]=(y_["Open Price2"]-y_["Open Price"])/y_["Open Price"]
+    y["Perf"].fillna(0, inplace=True)
+    return y
 #%%
-sizesToTrain = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.8]
-train_sizes, train_scores, test_scores, fit_times, score_times = \
-    learning_curve(pl_linear, X, y, cv=ShuffleSplit(n_splits=100,
-                                                    test_size=0.2,
-                                                    random_state=42),
-                   scoring='neg_mean_squared_error',
-                   n_jobs=4, train_sizes=sizesToTrain,
-                   return_times=True)
+from scipy.stats import zscore
+def ZscoreSlice(ZscoreSliceVal):
+    '''
+    Slices the distribution acording to Z score.
+    Any values with Z score above/below the argument will be given the max/min Z score value
+    '''
+    xz=x.apply(zscore) # Dataframe of Z scores
+    for key in x.keys():
+        xps=ZscoreSliceVal * x[key].std()+x[key].mean()
+        xns=ZscoreSliceVal * -x[key].std()+x[key].mean()
+        x[key][xz[key]>ZscoreSliceVal]=xps
+        x[key][xz[key]<-ZscoreSliceVal]=xns
+    return x
+#%% RUN THE FUNCTIONS
+# From x_ (raw fundamental data) get X (stock fundamental ratios)
+fixNansInX(x_)
+addColsToX(x_)
+X=getXRatios(x_)
+fixXRatios(X)
 
-results_df = pd.DataFrame(index=train_sizes) #Create a DataFrame of results
-results_df['train_scores_mean'] = np.sqrt(-np.mean(train_scores, axis=1))
-results_df['train_scores_std'] = np.std(np.sqrt(-train_scores), axis=1)
-results_df['test_scores_mean'] = np.sqrt(-np.mean(test_scores, axis=1))
-results_df['test_scores_std'] = np.std(np.sqrt(-test_scores), axis=1)
-results_df['fit_times_mean'] = np.mean(fit_times, axis=1)
-results_df['fit_times_std'] = np.std(fit_times, axis=1)
-
-print(results_df)
-#%% plot learning curve
-results_df['train_scores_mean'].plot(style='-x')
-results_df['test_scores_mean'].plot(style='-x')
-
-plt.fill_between(results_df.index,\
-                 results_df['train_scores_mean']-results_df['train_scores_std'],\
-                 results_df['train_scores_mean']+results_df['train_scores_std'], alpha=0.2)
-plt.fill_between(results_df.index,\
-                 results_df['test_scores_mean']-results_df['test_scores_std'],\
-                 results_df['test_scores_mean']+results_df['test_scores_std'], alpha=0.2)
-plt.grid()
-plt.legend(['Training CV RMSE Score','Test Set RMSE'])
-plt.ylabel('RMSE')
-plt.xlabel('Number of training rows')
-plt.title('Linear Regression Learning Curve', fontsize=15)
-#plt.ylim([0, 1.25]);
+# From y_(stock prices/dates) get y (stock price change)
+y=getYPerf(y_)
+#%% SEE DISTRIBUTIONS
+# See one of the distributions
+k=X.keys()[2] # Try different numbers, 0-14.
+X[k].hist(bins=100, figsize=(6,5))
+plt.title(k);
 plt.show()
-#%% Linear Regression Prediction Analysis
+#%% make a plot of the distributions
+# Make a plot of the distributions.
+cols, rows = 3, 5
+plt.figure(figsize=(5*cols, 5*rows))
+
+for i in range(1, cols*rows):
+    if i<len(X.keys()):
+        plt.subplot(rows, cols, i)
+        k=X.keys()[i]
+        X[k].hist(bins=100)
+        plt.title(k);
+plt.show()
+#%% save to csv
+y.to_csv("Annual_Stock_Price_Performance_Percentage.csv")
+X.to_csv("Annual_Stock_Price_Fundamentals_Ratios.csv")
+#%% power transformer to ensure data has good distribution
+# Write code to plot out all distributions of X in a nice diagram
+from sklearn.preprocessing import PowerTransformer
+
+transformer = PowerTransformer()
+X_t = pd.DataFrame(transformer.fit_transform(X), columns=X.keys())
+
+
+def plotFunc(n, myDatFrame):
+    myKey = myDatFrame.keys()[n]
+    plt.hist(myDatFrame[myKey], density=True, bins=30)
+    plt.grid()
+    plt.xlabel(myKey)
+    plt.ylabel('Probability')
+
+
+plt.figure(figsize=(13, 20))
+plotsIwant = [4, 6, 9, 10, 11]
+
+j = 1
+for i in plotsIwant:
+    plt.subplot(len(plotsIwant), 2, 2 * j - 1)
+    plotFunc(i, X)
+    if j == 1:
+        plt.title('Before Transformation', fontsize=17)
+    plt.subplot(len(plotsIwant), 2, 2 * j)
+    plotFunc(i, X_t)
+    if j == 1:
+        plt.title('After Transformation', fontsize=17)
+    j += 1
+
+plt.savefig('Transformat_Dists.png', dpi=300)
