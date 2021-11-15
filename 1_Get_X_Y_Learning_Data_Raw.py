@@ -178,14 +178,14 @@ y = y[bool_list1 & bool_list2 & bool_list3]
 X = X[bool_list1 & bool_list2 & bool_list3]
 
 # Issues where no listed number of shares
-bool_list4 = ~X["Shares (Diluted)_x"].isnull()
+bool_list4 = ~X["Shares (Diluted)"].isnull()
 y = y[bool_list4]
 X = X[bool_list4]
 
 y = y.reset_index(drop=True)
 X = X.reset_index(drop=True)
 #%% add market cap to X data
-X["Market Cap"] = y["Open Price"]*X["Shares (Diluted)_x"]
+X["Market Cap"] = y["Open Price"]*X["Shares (Diluted)"]
 #%% print X shape (15588, 75)
 print(X.shape)
 # print Y shape (15588, 8)
