@@ -484,3 +484,34 @@ def plotDensityContourPredVsRealContour(model_name, x_plot, y_plot, ps):
 #%%
 plt.figure(figsize=(7,7))
 plotDensityContourPredVsRealContour('pl_KNeighbors', y_pred, y_test.to_numpy(),1)
+#%% SUPPORT VECTOR MACHINE REGRESSION
+# Read in data and do train/test split.
+X, y = loadXandyAgain()
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+
+print('X training matrix dimensions: ', X_train.shape)
+print('X testing matrix dimensions: ', X_test.shape)
+print('y training matrix dimensions: ', y_train.shape)
+print('y testing matrix dimensions: ', y_test.shape)
+#%%
+# SVM quick and dirty
+from sklearn.svm import SVR
+
+pl_svm = Pipeline([
+    ('Power Transformer', PowerTransformer()),
+    ('SVR', SVR()) # kernel='rbf', C=100, gamma=0.1, epsilon=.1 generated good returns.
+])
+
+pl_svm.fit(X_train, y_train)
+y_pred = pl_svm.predict(X_test)
+from sklearn.metrics import mean_squared_error
+print('mse: ', mean_squared_error(y_test, y_pred))
+from sklearn.metrics import mean_absolute_error
+print('mae: ', mean_absolute_error(y_test, y_pred))
+
+import pickle
+pickle.dump(pl_svm, open("pl_svm.p", "wb" ))
+#%%
+observePredictionAbility(pl_svm, X, y)
+#%%
