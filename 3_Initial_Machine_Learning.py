@@ -140,7 +140,7 @@ y_results = pd.DataFrame()
 y_results['Actual Return'] = y_test
 y_results['Predicted Return'] = y_pred
 
-# Sort it by the prediced return.
+# Sort it by the predicted return.
 y_results.sort_values(by='Predicted Return',
                       ascending=False,
                       inplace=True)
@@ -514,4 +514,27 @@ import pickle
 pickle.dump(pl_svm, open("pl_svm.p", "wb" ))
 #%%
 observePredictionAbility(pl_svm, X, y)
-#%%
+#%As there are many parameters do a GridSearch CV, to find optimal parameters
+# Takes a LONG time
+from sklearn.model_selection import GridSearchCV
+
+parameters = [{'SVR__kernel': ['linear'],\
+               'SVR__C': [1, 10, 100],\
+               'SVR__epsilon': [0.05, 0.1, 0.2]},\
+                {'SVR__kernel': ['rbf'],\
+               'SVR__C': [1, 10, 100],\
+               'SVR__gamma': [0.001, 0.01, 0.1],\
+               'SVR__epsilon': [0.05, 0.1, 0.2]} ] # Best found was C=1, gamma=0.001, epsilon=0.2
+
+svm_gs = GridSearchCV(pl_svm, parameters, cv=10, scoring='neg_mean_squared_error')
+
+svm_gs.fit(X_train, y_train)
+
+print("Best parameters set found on development set:")
+print(svm_gs.best_params_,'\n')
+print("Grid scores on development set:")
+means = svm_gs.cv_results_['mean_test_score']
+stds = svm_gs.cv_results_['std_test_score']
+for mean, std, params in zip(means, stds, svm_gs.cv_results_['params']):
+    print("%0.3f (+/-%0.03f) for %r"
+          % (mean, std * 2, params))
